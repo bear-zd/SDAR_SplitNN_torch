@@ -66,18 +66,19 @@ class CustomDataset(Dataset):
     def __init__(self, x, y, transform=None):
         self.x = x
         self.y = y
-        print(self.x.shape, self.y.shape)
+        self.len = len(x)
         self.transform = transform
 
     def __len__(self):
-        return len(self.x)
+        return int(2**20)  
 
     def __getitem__(self, idx):
-        img = self.x[idx]
-        label = self.y[idx]
+        img = self.x[idx % self.len]
+        label = self.y[idx % self.len]
         if self.transform:
             img = self.transform(img)
         return img, label
+
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -94,7 +95,7 @@ class LoadDataset():
         if dataset_name not in ["cifar10", "cifar100", "tinyimagenet", "stl10"]:
             raise NotImplementedError
         self.dataset_name = dataset_name
-        self.class_num = dataset_class_num[dataset_name]
+        self.num_class = dataset_class_num[dataset_name]
         self.batch_size = 128 if self.dataset_name != "stl10" else 32
         self.loader = dataset_get[self.dataset_name]
 

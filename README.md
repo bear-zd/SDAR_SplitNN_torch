@@ -12,4 +12,5 @@ Not yet implemented:
 Wont implement:
 - U-shape SL
 - plainnet
+- SDAR hetero
 

@@ -135,7 +135,7 @@ class GModel(nn.Module):
         return x
 
 class Decoder(nn.Module):
-    def __init__(self, level, input_shape, conditional, num_class, width="standard"):
+    def __init__(self, level, input_shape, conditional, num_classes, width="standard"):
         super(Decoder, self).__init__()
         
         # Define the model width variations
@@ -153,7 +153,7 @@ class Decoder(nn.Module):
         # Conditional input handling
         self.conditional = conditional
         if self.conditional:
-            self.embedding = nn.Embedding(num_class, 50)  # Embed label to vector
+            self.embedding = nn.Embedding(num_classes, 50)  # Embed label to vector
             self.fc = nn.Linear(50, input_shape[1] * input_shape[2])  # Fully connected to match shape
             self.fc_out_channels = input_shape[1] * input_shape[2]
         self.in_c = input_shape[0] + 1 if self.conditional else input_shape[0]
