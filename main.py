@@ -28,7 +28,15 @@ parser.add_argument("--print_to_stdout", action="store_true")
 parser.add_argument("--gpu", type=int, default=0)
 
 args = parser.parse_args()
-
+import random
+def random_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+random_seed(42)
 dataset = LoadDataset(args.dataset)
 num_class = dataset.num_class
 num_iters = 40000 if args.level > 7 else 20000

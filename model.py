@@ -76,7 +76,7 @@ class FModel(nn.Module):
         self.conv1 = nn.Conv2d(input_shape[0], self.widths[0], kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(self.widths[0])
         self.relu = nn.ReLU()
-        self.layers = []
+        self.layers = nn.ModuleList()
         for i in range(level, 0, -1):
             in_c, out_c = layer_config[i]
             if i == 0:
@@ -116,7 +116,7 @@ class GModel(nn.Module):
             9 : [self.widths[2], self.widths[2]],
         }
 
-        self.layers = []
+        self.layers = nn.ModuleList()
         for i in range(9, level-1, -1):
             in_c, out_c  = layer_config[i]
             self.layers.insert(0, BasicBlock(in_c if i != level else input_shape[0], out_c, True if i in [3, 6] else False))
@@ -128,7 +128,6 @@ class GModel(nn.Module):
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
-        print(x.shape)
         x = self.avgpool(x).squeeze(2).squeeze(2)
         x = self.fc(x)
         x = self.dropout(x)
@@ -158,7 +157,7 @@ class Decoder(nn.Module):
             self.fc_out_channels = input_shape[1] * input_shape[2]
         self.in_c = input_shape[0] + 1 if self.conditional else input_shape[0]
         self.level = level
-        self.layers = []
+        self.layers = nn.ModuleList()
         # add layers from bottom to top
         layer_config = {
             1 : (self._build_conv_block, [self.widths[0], self.widths[0]]),
@@ -180,7 +179,7 @@ class Decoder(nn.Module):
 
     def _build_conv_block(self, in_channels, out_channels):
         """Creates a Conv2D -> BatchNorm -> LeakyReLU block."""
-        layers = []
+        layers = nn.ModuleList()
         layers.append(nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1))
         layers.append(nn.BatchNorm2d(out_channels, momentum=0.9, eps=1e-5))
         layers.append(nn.LeakyReLU(0.2))
@@ -188,7 +187,7 @@ class Decoder(nn.Module):
     
     def _upsample_block(self, in_channels, out_channels):
         """Creates an UpSampling2D -> Conv2D block."""
-        layers = []
+        layers = nn.ModuleList()
         layers.append(nn.Upsample(scale_factor=2, mode='nearest'))
         layers.append(nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1))
         layers.append(nn.BatchNorm2d(out_channels, momentum=0.9, eps=1e-5))
@@ -238,17 +237,14 @@ class SimulatorDiscriminator(nn.Module):
         self.bn = bn
         
         # Define convolution layers based on the level
-        self.conv_layers = []
-        
+        self.conv_layers = nn.ModuleList()
+        scale_fc = 32
         if level == 3:  # input_shape = (32, 32, 16)
             self.conv_layers.extend(self._build_level_3())
-            scale_fc = 32
         elif level <= 6:
             self.conv_layers.extend(self._build_level_6())
-            scale_fc = 8
         elif level <= 9:
             self.conv_layers.extend(self._build_level_9())
-            scale_fc = 2
         
         # Fully connected layers for classifier
 
@@ -256,7 +252,7 @@ class SimulatorDiscriminator(nn.Module):
         self.dropout = nn.Dropout(0.4)
 
     def _build_level_3(self):
-        layers = []
+        layers = nn.ModuleList()
         layers.extend(self._build_conv_block(self.in_channels, self.widths[0], stride = 1))
         layers.extend(self._build_conv_block(self.widths[0], self.widths[1], check_bn=True, stride = 2))
         layers.extend(self._build_conv_block(self.widths[1], self.widths[2], check_bn=True, stride = 2))
@@ -267,7 +263,7 @@ class SimulatorDiscriminator(nn.Module):
         return layers
     
     def _build_level_6(self):
-        layers = []
+        layers = nn.ModuleList()
         layers.extend(self._build_conv_block(self.in_channels, self.widths[1], stride = 1))
         layers.extend(self._build_conv_block(self.widths[1], self.widths[2], check_bn=True, stride = 2))
         layers.extend(self._build_conv_block(self.widths[2], self.widths[3], check_bn=True, stride = 1))
@@ -278,7 +274,7 @@ class SimulatorDiscriminator(nn.Module):
         return layers
     
     def _build_level_9(self):
-        layers = []
+        layers = nn.ModuleList()
         layers.extend(self._build_conv_block(self.in_channels, self.widths[2], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[2], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
@@ -289,7 +285,7 @@ class SimulatorDiscriminator(nn.Module):
 
     def _build_conv_block(self, in_channels, out_channels, check_bn=False, stride=1):
         """Creates a Conv2D -> BatchNorm -> LeakyReLU block."""
-        layers = []
+        layers = nn.ModuleList()
         layers.append(nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=stride, padding=1))
         if check_bn and self.bn:
             layers.append(nn.BatchNorm2d(out_channels, momentum=0.9, eps=1e-5))
@@ -361,14 +357,14 @@ class DecoderDiscriminator(nn.Module):
         return x
 
 
-def testDD():
+def test_SDD():
     # test with DecoderDiscriminator
     model = DecoderDiscriminator(input_shape=(3, 32, 32), conditional=True, num_class=2)
     input_tensor = torch.randn(3, 3, 32, 32)  # Example input image
     label_tensor = torch.tensor([1,1,1])  # Example label (for conditional input)
     output = model(input_tensor, label_tensor)
     print(output)
-def testD():
+def test_SD():
     # test with Discriminator
     model = SimulatorDiscriminator(level=7, input_shape=(16, 32, 32), conditional=True, num_class=2)
     input_tensor = torch.randn(3, 16, 32, 32)  # Example input image
@@ -400,3 +396,5 @@ def test_gmodel():
         print(l)
 
 
+if __name__ == "__main__":
+    test_SD()
