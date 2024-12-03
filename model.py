@@ -1,12 +1,9 @@
 """
 This file references code of paper SDAR: Passive Inference Attacks on Split Learning via Adversarial Regularization (https://arxiv.org/abs/2310.10483)
 """
-from typing import Dict
 
 import torch
 import torch.nn as nn
-from torch import optim
-from torch.utils.data import DataLoader
 
 import torch
 import torch.nn as nn

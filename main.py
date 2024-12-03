@@ -3,6 +3,7 @@ import numpy as np
 import time
 import argparse
 import sys
+import torch
 from data import *
 from sdar import SDARAttacker
 from config import load_config

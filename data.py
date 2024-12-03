@@ -1,10 +1,8 @@
 import os
 import numpy as np
-import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
-from PIL import Image
 import imageio
 from torchvision.datasets import CIFAR10, CIFAR100, STL10
 import matplotlib.pyplot as plt
@@ -119,7 +117,7 @@ transform = transforms.Compose([
 
 def make_dataset(x, y, transform, batch_size=128, evaluate=False):
     dataset = OriginalDataset(x, y, transform=transform) if evaluate else RepeatedDataset(x, y, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     return dataloader
 
 class LoadDataset():

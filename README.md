@@ -5,8 +5,21 @@ arxiv: https://arxiv.org/pdf/2310.10483.
 
 tf code: https://github.com/zhxchd/SDAR_SplitNN/?tab=readme-ov-file
 
-Wont implement:
+Not implement:
 - U-shape SL
 - plainnet
-- SDAR hetero
+- SDAR hetero client number
 
+# how to run
+
+## installation
+
+just install pytorch, matplotlib, imageio
+
+## run
+
+```bash
+mkdir data
+mkdir logs
+./run.sh
+``` 

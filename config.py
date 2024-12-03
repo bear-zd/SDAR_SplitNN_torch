@@ -7,16 +7,10 @@ def load_config(dataset="cifar10", model="resnet"):
               "width": "standard"} 
     config_table = {
         "resnet": {
-            "cifar10": {"lambda1": 0.02, "lambda2": 1e-5, "flip_rate": 0.2},
-            "cifar100": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.2},
-            "tinyimagenet": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.2},
-            "stl10": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.2}, # no idea, just copy the tinyimagenet one
-        },
-        "plainnet": {
-            "cifar10": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.1},
-            "cifar100": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.1},
-            "tinyimagenet": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.4},
-            "stl10": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.4},  # no idea, just copy the tinyimagenet one
+            "cifar10": {"lambda1": 0.02, "lambda2": 1e-5, "flip_rate": 0.0},
+            "cifar100": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.0},
+            "tinyimagenet": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.0},
+            "stl10": {"lambda1": 0.04, "lambda2": 1e-5, "flip_rate": 0.0}, # no idea, just copy the tinyimagenet one
         }
     }
 

@@ -117,9 +117,6 @@ class SDARAttacker:
             fg_loss = ce_loss * (1 - self.alpha) + self.alpha * dist_corr_loss
         else:
             fg_loss = F.cross_entropy(y_pred, y.view(-1))
-        # print(fg_loss.shape)
-            
-        # self.fg_acc.update(torch.mean((y_pred.argmax(1) == y).float()))
         
         torch.autograd.backward(fg_loss, inputs=list(self.f.parameters())+list(self.g.parameters()))
         self.fg_optimizer.step()
