@@ -1,8 +1,7 @@
 def load_config(dataset="cifar10", model="resnet"):    
     config = {"e_lr": 0.001, 
               "d_lr": 0.0005, 
-              "flip_rate": 0.2, 
-              "dropout": 0.2, 
+              "dropout": 0.0, 
               "fg_lr":0.001,
               "alpha": 0.0, 
               "width": "standard"} 

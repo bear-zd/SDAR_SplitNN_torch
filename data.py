@@ -7,6 +7,8 @@ from torchvision import transforms
 from PIL import Image
 import imageio
 from torchvision.datasets import CIFAR10, CIFAR100, STL10
+import matplotlib.pyplot as plt
+
 dataset_class_num ={
     "cifar10": 10,
     "cifar100": 100,
@@ -14,6 +16,22 @@ dataset_class_num ={
     "stl10": 10
 }
 
+def plot_attack_results(X, X_recon, file_name):
+    X = np.transpose(X, (0, 2, 3, 1))
+    X_recon = np.transpose(X_recon, (0, 2, 3, 1))
+    n = len(X)
+    fig, ax = plt.subplots(2, n, figsize=(n*3,3))
+    plt.axis('off')
+    plt.subplots_adjust(wspace=0, hspace=0.05)
+    for i in range(n):
+        ax[0, i].imshow(X[i])
+        ax[1, i].imshow(X_recon[i])
+        ax[0, i].set(xticks=[], yticks=[])
+        ax[1, i].set(xticks=[], yticks=[])
+        # ax[0, i].set_aspect('equal')
+        # ax[1, i].set_aspect('equal')
+    plt.savefig(file_name, dpi=fig.dpi, bbox_inches='tight')
+    return fig
 
 def tinyimagenet(root, **kwargs):
     dataset_dir = os.path.join(root, "tiny-imagenet-200/")
@@ -44,15 +62,12 @@ def tinyimagenet(root, **kwargs):
             return np.array(train_data), np.array(train_labels), np.array(test_data), np.array(test_labels)
         
         train_data, train_labels, test_data, test_labels = get_data(get_id_dictionary())
-        # train_data = np.transpose(train_data, (0, 3, 1, 2))
-        # test_data = np.transpose(test_data, (0, 3, 1, 2))
         train_labels = np.argmax(train_labels, axis=1).reshape(-1, 1)
         test_labels = np.argmax(test_labels, axis=1).reshape(-1, 1)
 
         return (train_data, train_labels), (test_data, test_labels)
     train, test = load_tiny_imagenet()
     return train, test
-
 
 
 dataset_get = {
@@ -62,7 +77,7 @@ dataset_get = {
     "tinyimagenet": tinyimagenet
 }
 
-class CustomDataset(Dataset):
+class RepeatedDataset(Dataset):
     def __init__(self, x, y, transform=None):
         self.x = x
         self.y = y
@@ -70,7 +85,7 @@ class CustomDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return int(2**20)  
+        return int(2**23)  
 
     def __getitem__(self, idx):
         img = self.x[idx % self.len]
@@ -79,15 +94,32 @@ class CustomDataset(Dataset):
             img = self.transform(img)
         return img, label
 
+class OriginalDataset(Dataset):
+    def __init__(self, x, y, transform=None):
+        self.x = x
+        self.y = y
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.x)  
+
+    def __getitem__(self, idx):
+        img = self.x[idx]
+        label = self.y[idx]
+        if self.transform:
+            img = self.transform(img)
+        return img, label
+
 
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Resize((32, 32))
+    # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-def make_dataset(x, y, transform, batch_size=128):
-    dataset = CustomDataset(x, y, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+def make_dataset(x, y, transform, batch_size=128, evaluate=False):
+    dataset = OriginalDataset(x, y, transform=transform) if evaluate else RepeatedDataset(x, y, transform=transform)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     return dataloader
 
 class LoadDataset():
@@ -99,7 +131,7 @@ class LoadDataset():
         self.batch_size = 128 if self.dataset_name != "stl10" else 32
         self.loader = dataset_get[self.dataset_name]
 
-    def get_dataset(self, frac=1.0, num_class_to_remove=0):
+    def get_dataset(self, frac=1.0, num_class_to_remove=0, evaluate=False):
         if self.dataset_name == "stl10":
             train, test = self.loader(root='./data', split="train", download=True), self.loader(root='./data', split="test", download=True)
             x = np.concatenate([test.data, train.data])
@@ -114,15 +146,12 @@ class LoadDataset():
             train, test = self.loader(root='./data', train=True, download=True), self.loader(root='./data', train=False, download=True)
             x = np.concatenate([train.data, test.data])
             y = np.concatenate([np.array(train.targets).reshape(-1, 1), np.array(test.targets).reshape(-1, 1)])
-        x_client, x_server, y_client, y_server = train_test_split(x, y, train_size=0.5, random_state=42)
+        x_client, x_server, y_client, y_server = train_test_split(x, y, train_size=0.5)
         if frac < 1.0:
-            x_server, _, y_server, _ = train_test_split(x_server, y_server, train_size=frac, random_state=42)
+            x_server, _, y_server, _ = train_test_split(x_server, y_server, train_size=frac)
         if num_class_to_remove > 0:
             x_server = x_server[(y_server >= num_class_to_remove).flatten()]
             y_server = y_server[(y_server >= num_class_to_remove).flatten()]
-        client_loader = make_dataset(x_client, y_client, transform, self.batch_size)
-        server_loader = make_dataset(x_server, y_server, transform, self.batch_size)
+        client_loader = make_dataset(x_client, y_client, transform, self.batch_size, evaluate)
+        server_loader = make_dataset(x_server, y_server, transform, self.batch_size, evaluate)
         return client_loader, server_loader
-
-
-

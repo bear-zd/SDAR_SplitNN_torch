@@ -24,7 +24,7 @@ class BasicBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_channels, momentum=0.9, eps=1e-5)
  
         if downsample:
-            self.downsampleconv  = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
+            self.downsampleconv  = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2, bias=False)
             self.downsamplebn = nn.BatchNorm2d(out_channels, momentum=0.9, eps=1e-5)
 
     def forward(self, x):
@@ -74,7 +74,7 @@ class FModel(nn.Module):
             raise NotImplementedError(f'Level {level} is not supported.')
         # init pre resblock ops
         self.conv1 = nn.Conv2d(input_shape[0], self.widths[0], kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(self.widths[0])
+        self.bn1 = nn.BatchNorm2d(self.widths[0], momentum=0.9, eps=1e-5, affine=False)
         self.relu = nn.ReLU()
         self.layers = nn.ModuleList()
         for i in range(level, 0, -1):
@@ -117,7 +117,7 @@ class GModel(nn.Module):
         }
 
         self.layers = nn.ModuleList()
-        for i in range(9, level-1, -1):
+        for i in range(8, level-1, -1):
             in_c, out_c  = layer_config[i]
             self.layers.insert(0, BasicBlock(in_c if i != level else input_shape[0], out_c, True if i in [3, 6] else False))
 
@@ -175,6 +175,7 @@ class Decoder(nn.Module):
             mehtod, [in_c, out_c] = layer_config[i]
             self.layers = mehtod(self.in_c if i == level else in_c, out_c) + self.layers
         self.final_conv = nn.Conv2d(self.widths[0], 3, 3, 1, 1)
+        self.sigmoid = nn.Sigmoid()
         
 
     def _build_conv_block(self, in_channels, out_channels):
@@ -182,7 +183,7 @@ class Decoder(nn.Module):
         layers = nn.ModuleList()
         layers.append(nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1))
         layers.append(nn.BatchNorm2d(out_channels, momentum=0.9, eps=1e-5))
-        layers.append(nn.LeakyReLU(0.2))
+        layers.append(nn.ReLU())
         return layers
     
     def _upsample_block(self, in_channels, out_channels):
@@ -207,7 +208,7 @@ class Decoder(nn.Module):
             x = layer(x)
 
         x = self.final_conv(x)
-        return torch.sigmoid(x)
+        return self.sigmoid(x)
 
 
 class SimulatorDiscriminator(nn.Module):
@@ -269,17 +270,17 @@ class SimulatorDiscriminator(nn.Module):
         layers.extend(self._build_conv_block(self.widths[2], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
-        layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
+        # layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.append(nn.Conv2d(self.widths[3], self.widths[3], kernel_size=3, stride=2, padding=1))
         return layers
     
     def _build_level_9(self):
         layers = nn.ModuleList()
-        layers.extend(self._build_conv_block(self.in_channels, self.widths[2], check_bn=True, stride = 1))
+        layers.extend(self._build_conv_block(self.in_channels, self.widths[2], check_bn=False, stride = 1))
         layers.extend(self._build_conv_block(self.widths[2], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
-        layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
+        # layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.append(nn.Conv2d(self.widths[3], self.widths[3], kernel_size=3, stride=2, padding=1))
         return layers
 
@@ -356,45 +357,61 @@ class DecoderDiscriminator(nn.Module):
         
         return x
 
+# from torchsummary import summary
+# def test_SDD():
+#     # test with DecoderDiscriminator
+#     model = DecoderDiscriminator(input_shape=(3, 32, 32), conditional=True, num_class=10)
+#     input_tensor = torch.randn(3, 3, 32, 32)  # Example input image
+#     label_tensor = torch.tensor([1,1,1])  # Example label (for conditional input)
+#     output = model(input_tensor, label_tensor)
+#     print(f"DecoderDiscriminator output{output}, params: {count_parameters(model)}")
 
-def test_SDD():
-    # test with DecoderDiscriminator
-    model = DecoderDiscriminator(input_shape=(3, 32, 32), conditional=True, num_class=2)
-    input_tensor = torch.randn(3, 3, 32, 32)  # Example input image
-    label_tensor = torch.tensor([1,1,1])  # Example label (for conditional input)
-    output = model(input_tensor, label_tensor)
-    print(output)
-def test_SD():
-    # test with Discriminator
-    model = SimulatorDiscriminator(level=7, input_shape=(16, 32, 32), conditional=True, num_class=2)
-    input_tensor = torch.randn(3, 16, 32, 32)  # Example input image
-    label_tensor = torch.tensor([1,1,1])  # Example label (for conditional input)
-    output = model(input_tensor, label_tensor)
-    print(output)
-def test_decoder():
-    # test with decoder
-    for l in range(3, 10):
-        model = Decoder(level=l, input_shape=(256, 4, 4), conditional=True, num_class=2)
-        input_tensor = torch.randn(3, 256, 4, 4)  # Example input image
-        label_tensor = torch.tensor([1,1,1])  # Example label (for conditional input)
-        output = model(input_tensor, label_tensor)
-        print(l, output.shape)
-def test_fmodel():
-    # test with decoder
-    for l in range(3, 10):
-        model = FModel(level=l, input_shape=(3, 32, 32))
-        input_tensor = torch.randn(3, 3, 32, 32)  # Example input image
-        output = model(input_tensor)
-        print(l, output.shape)
-def test_gmodel():
-    # test with decoder
-    for l in range(3, 10):
-        in_c = 32 if l < 7 else 64
-        model = GModel(level=l, input_shape=(in_c, 32, 32))
-        input_tensor = torch.randn(3, in_c, 32, 32)  # Example input image
-        output = model(input_tensor)
-        print(l)
+# def test_SD():
+#     # test with Discriminator
+#     for l in range(4, 9):
+#         input_shape = [16, 32, 32] if l == 3 else [32, 16, 16] if l < 7 else [64, 8, 8]
+#         model = SimulatorDiscriminator(level=l, input_shape=input_shape, conditional=True, num_class=10)
+#         input_tensor = torch.randn([3] + input_shape) 
+#         label_tensor = torch.tensor([1,1,1]) 
+#         output = model(input_tensor, label_tensor)
+#         print(f"SimulatorDiscriminator: level {l} output{output.shape}, params: {count_parameters(model)}")
 
+# def test_decoder():
+#     # test with decoder
+#     for l in range(4, 9):
+#         input_shape = [16, 32, 32] if l == 3 else [32, 16, 16] if l < 7 else [64, 8, 8]
+#         model = Decoder(level=l, input_shape=input_shape, conditional=True, num_classes=10)
+#         input_tensor = torch.randn([3] + input_shape)  
+#         label_tensor = torch.tensor([1,1,1])  
+#         output = model(input_tensor, label_tensor)
+#         print(f"Decoder: level {l} output{output.shape}, params: {count_parameters(model)}")
+# def test_fmodel():
+#     # test with decoder
+#     for l in range(4, 8):
+#         model = FModel(level=l, input_shape=(3, 32, 32))
+#         input_tensor = torch.randn(3, 3, 32, 32)  
+#         output = model(input_tensor)
+#         print(f"FModel: level {l} output{output.shape}, params: {count_parameters(model)}")
+    
+# def test_gmodel():
+#     # test with decoder
+#     for l in range(4, 8):
+#         input_shape = [16, 32, 32] if l == 3 else [32, 16, 16] if l < 7 else [64, 8, 8]
+#         model = GModel(level=l, input_shape=input_shape)
+#         if l == 4:
+#             model.cuda()
+#             summary(model, input_size=(32, 16, 16))
+#         input_tensor = torch.randn([3] + input_shape)  # Example input image
+#         output = model(input_tensor)
+#         print(f"GModel: level {l} output{output.shape}, params: {count_parameters(model)}")
+    
 
-if __name__ == "__main__":
-    test_SD()
+# def count_parameters(model):
+#     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+# if __name__ == "__main__":
+#     test_SDD()
+    # test_SD()
+    # test_decoder()
+    # test_fmodel()
+    # test_gmodel()
