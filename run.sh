@@ -13,7 +13,7 @@ levels=(4 5 6 7 8)
 # Loop through datasets and levels to run the command
 for dataset in "${datasets[@]}"; do
   for level in "${levels[@]}"; do
-    python main.py --dataset "$dataset" --level "$level"
+    python main.py --dataset "$dataset" --level "$level"  --model "plainnet"
   done
 done
 

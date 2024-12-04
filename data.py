@@ -18,9 +18,9 @@ def plot_attack_results(X, X_recon, file_name):
     X = np.transpose(X, (0, 2, 3, 1))
     X_recon = np.transpose(X_recon, (0, 2, 3, 1))
     n = len(X)
-    fig, ax = plt.subplots(2, n, figsize=(n*3,3))
+    fig, ax = plt.subplots(2, n, figsize=(n*1.3,3))
     plt.axis('off')
-    plt.subplots_adjust(wspace=0, hspace=0.05)
+    plt.subplots_adjust(wspace=0, hspace=0)
     for i in range(n):
         ax[0, i].imshow(X[i])
         ax[1, i].imshow(X_recon[i])
@@ -135,7 +135,7 @@ class LoadDataset():
             x = np.concatenate([test.data, train.data])
             y = np.concatenate([test.labels, train.labels])
             x = x.transpose(0, 2, 3, 1)
-            y = y.squeeze().reshape(-1, 1)
+            y = y.squeeze().reshape(-1, 1).astype(int)
         elif self.dataset_name == "tinyimagenet":
             train, test = self.loader(root='./data', train=True, download=True)
             x = np.concatenate([test[0], train[0]])

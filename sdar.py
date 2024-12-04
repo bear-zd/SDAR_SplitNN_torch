@@ -1,4 +1,4 @@
-from model import FModel, GModel, SimulatorDiscriminator, DecoderDiscriminator, Decoder
+from model.attacker import SimulatorDiscriminator, DecoderDiscriminator, Decoder
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -38,10 +38,11 @@ def dist_corr(X, Y):
 INTERMIDIATE_SHAPE = lambda level: (16, 32, 32) if level == 3 else (32, 16, 16) if level < 7 else (64, 8, 8)
     
 class SDARAttacker:
-    def __init__(self, client_loader, server_loader, num_classes, device) -> None:
+    def __init__(self, client_loader, server_loader, num_classes, device, model_name="resnet20") -> None:
         self.client_loader = client_loader
         self.server_loader = server_loader
         self.num_classes = num_classes
+        self.model_name = model_name
         self.device = torch.device(device)
 
     def preprocess(self, level, num_iters, p_config, conditional=True, use_e_dis=True, use_d_dis=True, verbose_freq=100):
@@ -58,6 +59,12 @@ class SDARAttacker:
         self.flip_rate = p_config["flip_rate"]
         # model and optimizer preparation 
         self.intermidiate_shape = INTERMIDIATE_SHAPE(level)
+        
+        if self.model_name == "resnet20":
+            from model.resnet import FModel, GModel
+        else:
+            from model.plainnet import FModel, GModel
+
         self.f = FModel(self.level, self.input_shape, width=p_config['width']).to(self.device)
         self.g = GModel(self.level, self.intermidiate_shape, self.num_classes, dropout=p_config["dropout"], width=p_config['width']).to(self.device)
         self.fg_optimizer = torch.optim.Adam( chain(self.f.parameters(), self.g.parameters()), lr=p_config["fg_lr"], eps=1e-07)

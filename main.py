@@ -23,6 +23,7 @@ def init():
     parser.add_argument("--num_class_to_remove", type=int, default=0)
     parser.add_argument("--diff_simulator", action="store_true")
     parser.add_argument("--run", type=int, help="Run number.", default=0)
+    parser.add_argument("--model", type=str, help="Model structure.", default="resnet20", choices=["resnet20", "plainnet"])
 
     # number of heterogenous distributions of the client data
     parser.add_argument("--num_hetero_client", type=int, default=1)
@@ -59,7 +60,8 @@ def main(args):
     dataset = LoadDataset(args.dataset)
     # num_class = dataset.num_class
     num_iters = 40000 if args.level > 7 else 20000
-    config = load_config(args.dataset)
+    num_iters //= 100
+    config = load_config(args.dataset, args.model)
 
     client_ds, server_ds = dataset.get_dataset(
         args.aux_data_frac, args.num_class_to_remove, evaluate=False

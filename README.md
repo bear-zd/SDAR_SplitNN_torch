@@ -7,7 +7,6 @@ tf code: https://github.com/zhxchd/SDAR_SplitNN/?tab=readme-ov-file
 
 Not implement:
 - U-shape SL
-- plainnet
 - SDAR hetero client number
 
 # how to run
