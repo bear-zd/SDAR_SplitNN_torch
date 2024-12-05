@@ -60,7 +60,6 @@ def main(args):
     dataset = LoadDataset(args.dataset)
     # num_class = dataset.num_class
     num_iters = 40000 if args.level > 7 else 20000
-    num_iters //= 100
     config = load_config(args.dataset, args.model)
 
     client_ds, server_ds = dataset.get_dataset(
