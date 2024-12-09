@@ -35,15 +35,23 @@ def dist_corr(X, Y):
     dCorXY = dCovXY / torch.sqrt(1e-10 + dVarXX * dVarYY)
     return dCorXY
 
-INTERMIDIATE_SHAPE = lambda level: (16, 32, 32) if level == 3 else (32, 16, 16) if level < 7 else (64, 8, 8)
+def get_intermidiate_shape(level, dataset_name="cifar10"):
+    scale = 1 if dataset_name in ["cifar10", "cifar100"] else 2 if dataset_name == "tinyimagenet" else 3
+    if level == 3:
+        return (16, 32*scale, 32*scale)
+    elif level < 7:
+        return (32, 16*scale, 16*scale)
+    else:
+        return (64, 8*scale, 8*scale)
     
 class SDARAttacker:
-    def __init__(self, client_loader, server_loader, num_classes, device, model_name="resnet20") -> None:
+    def __init__(self, client_loader, server_loader, num_classes, device, model_name="resnet20", dataset_name="cifar10") -> None:
         self.client_loader = client_loader
         self.server_loader = server_loader
         self.num_classes = num_classes
         self.model_name = model_name
         self.device = torch.device(device)
+        self.dataset_name = dataset_name
 
     def preprocess(self, level, num_iters, p_config, conditional=True, use_e_dis=True, use_d_dis=True, verbose_freq=100):
         # hyperparameters preparation
@@ -53,12 +61,11 @@ class SDARAttacker:
         self.use_e_dis = use_e_dis
         self.use_d_dis = use_d_dis
         self.verbose_freq = verbose_freq
-        self.input_shape = (3, 32, 32)
+        self.input_shape = (3, 32, 32) if self.dataset_name in ["cifar10", "cifar100"] else (3, 64, 64) if self.dataset_name == "tinyimagenet" else (3, 96, 96)
         self.p_config = p_config
         self.alpha = p_config["alpha"]
         self.flip_rate = p_config["flip_rate"]
         # model and optimizer preparation 
-        self.intermidiate_shape = INTERMIDIATE_SHAPE(level)
         
         if self.model_name == "resnet20":
             from model.resnet import FModel, GModel
@@ -66,17 +73,17 @@ class SDARAttacker:
             from model.plainnet import FModel, GModel
 
         self.f = FModel(self.level, self.input_shape, width=p_config['width']).to(self.device)
-        self.g = GModel(self.level, self.intermidiate_shape, self.num_classes, dropout=p_config["dropout"], width=p_config['width']).to(self.device)
+        self.g = GModel(self.level,  get_intermidiate_shape(self.level), self.num_classes, dropout=p_config["dropout"], width=p_config['width']).to(self.device)
         self.fg_optimizer = torch.optim.Adam( chain(self.f.parameters(), self.g.parameters()), lr=p_config["fg_lr"], eps=1e-07)
 
         self.e = FModel(self.level, self.input_shape, width=p_config['width']).to(self.device)
         self.e_optimizer = torch.optim.Adam(self.e.parameters() , lr=p_config["e_lr"], eps=1e-07)
 
-        self.d = Decoder(self.level, self.intermidiate_shape, conditional=conditional, num_classes=self.num_classes, width=p_config['width']).to(self.device)
+        self.d = Decoder(self.level,  get_intermidiate_shape(self.level, self.dataset_name), conditional=conditional, num_classes=self.num_classes, width=p_config['width']).to(self.device)
         self.d_optimizer = torch.optim.Adam(self.d.parameters(), lr=p_config["d_lr"], eps=1e-07)
 
         if use_e_dis:
-            self.e_dis = SimulatorDiscriminator(self.level, self.intermidiate_shape, self.conditional, self.num_classes, width=p_config['width']).to(self.device)
+            self.e_dis = SimulatorDiscriminator(self.level, get_intermidiate_shape(self.level, self.dataset_name), self.conditional, self.num_classes, self.dataset_name, width=p_config['width']).to(self.device)
             self.e_dis_optimizer = torch.optim.Adam(self.e_dis.parameters(), lr=p_config["e_dis_lr"], eps=1e-07)
         else:
             self.e_dis = None
@@ -112,6 +119,46 @@ class SDARAttacker:
         self.log["d_dis_loss"] = np.zeros(self.num_iters)
         self.log["attack_loss"] = np.zeros(self.num_iters)
 
+    def train_pipeline(self):
+        for i, ((x, y), (xs, ys)) in enumerate(self.data_iterator):
+            x, y = x.to(self.device), y.to(self.device)
+            xs, ys = xs.to(self.device), ys.to(self.device)
+            ys = self.flip_label(ys)
+            fg_loss, z = self.fg_train_step(x, y)
+            eg_loss, e_gen_loss, e_loss, e_dis_real_loss, e_dis_fake_loss, e_dis_loss = self.e_train_step(xs, ys, y, z)
+            d_mse_loss, d_gen_loss, d_loss, d_dis_real_loss, d_dis_fake_loss, d_dis_loss = self.d_train_step(xs, ys, y, z)
+            with torch.no_grad():
+                self.d.eval()
+                x_reconstructed = self.d(z, y.view(-1)) if self.conditional else self.d(z)
+                attack_loss = torch.mean(torch.square(x - x_reconstructed)).detach().cpu().numpy()
+
+            self.log["fg_loss"][i] = np.mean(fg_loss)
+            # self.log["fg_acc"][i] = self.fg_acc.result().numpy()
+            self.log["eg_loss"][i] = np.mean(eg_loss)
+            # self.log["eg_acc"][i] = self.eg_acc.result().numpy()
+            self.log["e_gen_loss"][i] = np.mean(e_gen_loss)
+            self.log["e_loss"][i] = np.mean(e_loss)
+            self.log["e_dis_real_loss"][i] = np.mean(e_dis_real_loss)
+            # self.log["e_dis_real_acc"][i] = self.e_dis_real_acc.result().numpy()
+            self.log["e_dis_fake_loss"][i] = np.mean(e_dis_fake_loss)
+            # self.log["e_dis_fake_acc"][i] = self.e_dis_fake_acc.result().numpy()
+            self.log["e_dis_loss"][i] = np.mean(e_dis_loss)
+            self.log["d_mse_loss"][i] = np.mean(d_mse_loss)
+            self.log["d_gen_loss"][i] = np.mean(d_gen_loss)
+            self.log["d_loss"][i] = np.mean(d_loss)
+            self.log["d_dis_real_loss"][i] = np.mean(d_dis_real_loss)
+            # self.log["d_dis_real_acc"][i] = self.d_dis_real_acc.result().numpy()
+            self.log["d_dis_fake_loss"][i] = np.mean(d_dis_fake_loss)
+            # self.log["d_dis_fake_acc"][i] = self.d_dis_fake_acc.result().numpy()
+            self.log["d_dis_loss"][i] = np.mean(d_dis_loss)
+            self.log["attack_loss"][i] = np.mean(attack_loss)
+
+            if self.verbose_freq is not None and (i+1) % self.verbose_freq == 0:
+                print(f"[{i}]: fg_loss: {np.mean(self.log['fg_loss'][i+1-self.verbose_freq:i+1]):.4f}, e_total_loss: {np.mean(self.log['e_loss'][i+1-self.verbose_freq:i+1]):.4f}, e_dis_loss: {np.mean(self.log['e_dis_loss'][i+1-self.verbose_freq:i+1]):.4f}, d_total_loss: {np.mean(self.log['d_loss'][i+1-self.verbose_freq:i+1]):.4f}, d_dis_loss: {np.mean(self.log['d_dis_loss'][i+1-self.verbose_freq:i+1]):.4f}, attack_loss: {np.mean(self.log['attack_loss'][i+1-self.verbose_freq:i+1]):.4f}")
+            if i == self.num_iters - 1:
+                break
+        return self.log
+    
     def fg_train_step(self, x, y):
         self.fg_optimizer.zero_grad()
         self.f.train()
@@ -210,45 +257,6 @@ class SDARAttacker:
             self.d_dis_optimizer.step()
         return d_mse_loss.item(), d_gen_loss.item(), d_loss.item(), float(d_dis_real_loss), float(d_dis_fake_loss), float(d_dis_loss)
 
-    def train_pipeline(self):
-        for i, ((x, y), (xs, ys)) in enumerate(self.data_iterator):
-            x, y = x.to(self.device), y.to(self.device)
-            xs, ys = xs.to(self.device), ys.to(self.device)
-            ys = self.flip_label(ys)
-            fg_loss, z = self.fg_train_step(x, y)
-            eg_loss, e_gen_loss, e_loss, e_dis_real_loss, e_dis_fake_loss, e_dis_loss = self.e_train_step(xs, ys, y, z)
-            d_mse_loss, d_gen_loss, d_loss, d_dis_real_loss, d_dis_fake_loss, d_dis_loss = self.d_train_step(xs, ys, y, z)
-            with torch.no_grad():
-                self.d.eval()
-                x_reconstructed = self.d(z, y.view(-1)) if self.conditional else self.d(z)
-                attack_loss = torch.mean(torch.square(x - x_reconstructed)).detach().cpu().numpy()
-
-            self.log["fg_loss"][i] = np.mean(fg_loss)
-            # self.log["fg_acc"][i] = self.fg_acc.result().numpy()
-            self.log["eg_loss"][i] = np.mean(eg_loss)
-            # self.log["eg_acc"][i] = self.eg_acc.result().numpy()
-            self.log["e_gen_loss"][i] = np.mean(e_gen_loss)
-            self.log["e_loss"][i] = np.mean(e_loss)
-            self.log["e_dis_real_loss"][i] = np.mean(e_dis_real_loss)
-            # self.log["e_dis_real_acc"][i] = self.e_dis_real_acc.result().numpy()
-            self.log["e_dis_fake_loss"][i] = np.mean(e_dis_fake_loss)
-            # self.log["e_dis_fake_acc"][i] = self.e_dis_fake_acc.result().numpy()
-            self.log["e_dis_loss"][i] = np.mean(e_dis_loss)
-            self.log["d_mse_loss"][i] = np.mean(d_mse_loss)
-            self.log["d_gen_loss"][i] = np.mean(d_gen_loss)
-            self.log["d_loss"][i] = np.mean(d_loss)
-            self.log["d_dis_real_loss"][i] = np.mean(d_dis_real_loss)
-            # self.log["d_dis_real_acc"][i] = self.d_dis_real_acc.result().numpy()
-            self.log["d_dis_fake_loss"][i] = np.mean(d_dis_fake_loss)
-            # self.log["d_dis_fake_acc"][i] = self.d_dis_fake_acc.result().numpy()
-            self.log["d_dis_loss"][i] = np.mean(d_dis_loss)
-            self.log["attack_loss"][i] = np.mean(attack_loss)
-
-            if self.verbose_freq is not None and (i+1) % self.verbose_freq == 0:
-                print(f"[{i}]: fg_loss: {np.mean(self.log['fg_loss'][i+1-self.verbose_freq:i+1]):.4f}, e_total_loss: {np.mean(self.log['e_loss'][i+1-self.verbose_freq:i+1]):.4f}, e_dis_loss: {np.mean(self.log['e_dis_loss'][i+1-self.verbose_freq:i+1]):.4f}, d_total_loss: {np.mean(self.log['d_loss'][i+1-self.verbose_freq:i+1]):.4f}, d_dis_loss: {np.mean(self.log['d_dis_loss'][i+1-self.verbose_freq:i+1]):.4f}, attack_loss: {np.mean(self.log['attack_loss'][i+1-self.verbose_freq:i+1]):.4f}")
-            if i == self.num_iters - 1:
-                break
-        return self.log
 
     def attack(self, x, y):
         self.d.eval()

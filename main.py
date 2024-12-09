@@ -72,12 +72,13 @@ def main(args):
         args.aux_data_frac, args.num_class_to_remove, evaluate=True
     )
 
-    print(f"Start experiments on {args.dataset} at l{args.level} with {config}")
+    print(f"Start experiments on {args.dataset} at l{args.level} with {config} and model {args.model}")
     sdar_attacker = SDARAttacker(
         client_loader=client_ds,
         server_loader=server_ds,
         num_classes=dataset.num_class,
         device=f"cuda:{args.gpu}",
+        dataset_name=args.dataset,
     )
     sdar_attacker.preprocess(level=args.level, num_iters=num_iters, p_config=config)
     start_time = time.time()

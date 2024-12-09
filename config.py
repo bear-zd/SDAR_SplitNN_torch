@@ -15,7 +15,7 @@ def load_config(dataset="cifar10", model="resnet20"):
             "stl10": {
                 "lambda1": 0.04,
                 "lambda2": 1e-5,
-                "flip_rate": 0.0,
+                "flip_rate": 0.0
             },
         },
         "plainnet": {

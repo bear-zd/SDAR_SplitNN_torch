@@ -81,8 +81,9 @@ class Decoder(nn.Module):
 
 
 class SimulatorDiscriminator(nn.Module):
-    def __init__(self, level, input_shape, conditional, num_class, width="standard", bn=True):
+    def __init__(self, level, input_shape, conditional, num_class, dataset_name, width="standard", bn=True):
         super(SimulatorDiscriminator, self).__init__()
+        self.dataset_name = dataset_name
         
         # Define the model width variations
         model_width = {
@@ -108,7 +109,7 @@ class SimulatorDiscriminator(nn.Module):
         
         # Define convolution layers based on the level
         self.conv_layers = nn.ModuleList()
-        scale_fc = 32
+        scale_fc = 32 if self.dataset_name in {"cifar10", "cifar100"} else 16 if self.dataset_name == "tinyimagenet" else 32/3
         if level == 3:  # input_shape = (32, 32, 16)
             self.conv_layers.extend(self._build_level_3())
         elif level <= 6:
@@ -118,7 +119,7 @@ class SimulatorDiscriminator(nn.Module):
         
         # Fully connected layers for classifier
 
-        self.fc1 = nn.Linear(self.widths[3] * input_shape[0] * input_shape[1] // scale_fc, 1)
+        self.fc1 = nn.Linear(int(self.widths[3] * input_shape[0] * input_shape[1] // scale_fc), 1)
         self.dropout = nn.Dropout(0.4)
 
     def _build_level_3(self):
