@@ -139,7 +139,6 @@ class SimulatorDiscriminator(nn.Module):
         layers.extend(self._build_conv_block(self.widths[2], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
-        # layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.append(nn.Conv2d(self.widths[3], self.widths[3], kernel_size=3, stride=2, padding=1))
         return layers
     
@@ -149,7 +148,6 @@ class SimulatorDiscriminator(nn.Module):
         layers.extend(self._build_conv_block(self.widths[2], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
-        # layers.extend(self._build_conv_block(self.widths[3], self.widths[3], check_bn=True, stride = 1))
         layers.append(nn.Conv2d(self.widths[3], self.widths[3], kernel_size=3, stride=2, padding=1))
         return layers
 

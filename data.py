@@ -26,8 +26,6 @@ def plot_attack_results(X, X_recon, file_name):
         ax[1, i].imshow(X_recon[i])
         ax[0, i].set(xticks=[], yticks=[])
         ax[1, i].set(xticks=[], yticks=[])
-        # ax[0, i].set_aspect('equal')
-        # ax[1, i].set_aspect('equal')
     plt.savefig(file_name, dpi=fig.dpi, bbox_inches='tight')
     return fig
 
@@ -111,7 +109,7 @@ class OriginalDataset(Dataset):
 
 transform = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Resize((32, 32))
+    # transforms.Resize((32, 32))
     # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 

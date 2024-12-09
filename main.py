@@ -36,9 +36,10 @@ def init():
 
     parser.add_argument("--print_to_stdout", action="store_true")
     parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--test", action="store_true")
 
     args = parser.parse_args()
-    dir_name = os.path.join("logs", f"{args.dataset}_l{args.level}_run{args.run}")
+    dir_name = os.path.join("logs", f"{args.dataset}_{args.model}_l{args.level}_run{args.run}")
     args.dir_name = dir_name
     os.makedirs(dir_name, exist_ok=True)
     if not args.print_to_stdout:
@@ -60,6 +61,8 @@ def main(args):
     dataset = LoadDataset(args.dataset)
     # num_class = dataset.num_class
     num_iters = 40000 if args.level > 7 else 20000
+    if args.test:
+        num_iters //= 100
     config = load_config(args.dataset, args.model)
 
     client_ds, server_ds = dataset.get_dataset(

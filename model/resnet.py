@@ -29,9 +29,6 @@ class BasicBlock(nn.Module):
         out = self.relu(out)
         return out
 
-
-
-
 class FModel(nn.Module):
     def __init__(self, level, input_shape, width="standard"):
         super(FModel, self).__init__()
@@ -69,7 +66,6 @@ class FModel(nn.Module):
             if i == 0:
                 in_c = input_shape[0]
             self.layers.insert(0, BasicBlock(in_c, out_c, True if i in [4, 7] else False))
-
 
     def forward(self, x):
         x = self.conv1(x)
