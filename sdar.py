@@ -270,13 +270,15 @@ class SDARAttacker:
     def evaluate(self, client_ds):
         total_mse = 0.0
         count = 0
+        mse_criterion = torch.nn.MSELoss(reduction='mean')
         for i, (x,y) in enumerate(client_ds):
             x, y = x.to(self.device), y.to(self.device)
             self.f.train()
             z = self.f(x)
             self.d.eval()
             x_recon = self.d(z, y) if self.conditional else self.d(z)
-            total_mse += torch.mean(torch.square(x - x_recon)).detach().cpu().numpy()
+            batch_mse = mse_criterion(x, x_recon)
+            total_mse += batch_mse.item()
             count += len(x)
         print(f"Average MSE over all client's images: {total_mse / count}.")
         return total_mse / count
