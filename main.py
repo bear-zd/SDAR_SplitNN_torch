@@ -5,7 +5,7 @@ import argparse
 import sys
 import torch
 from data import *
-from sdar import SDARAttacker
+from method import SDARAttacker, FORAAttacker
 from config import load_config
 import random
 
@@ -24,6 +24,7 @@ def init():
     parser.add_argument("--diff_simulator", action="store_true")
     parser.add_argument("--run", type=int, help="Run number.", default=0)
     parser.add_argument("--model", type=str, help="Model structure.", default="resnet20", choices=["resnet20", "plainnet"])
+    parser.add_argument("--method", type=str, default="sdar", choices=["sdar", "fora"])
 
     # number of heterogenous distributions of the client data
     parser.add_argument("--num_hetero_client", type=int, default=1)
@@ -37,6 +38,7 @@ def init():
     parser.add_argument("--print_to_stdout", action="store_true")
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--test", action="store_true")
+    
 
     args = parser.parse_args()
     dir_name = os.path.join("logs", f"{args.dataset}_{args.model}_l{args.level}_run{args.run}")
@@ -71,29 +73,30 @@ def main(args):
     client_eval_ds, _ = dataset.get_dataset(
         args.aux_data_frac, args.num_class_to_remove, evaluate=True
     )
+    Attacker = SDARAttacker if args.method == "sdar" else FORAAttacker
 
     print(f"Start experiments on {args.dataset} at l{args.level} with {config} and model {args.model}")
-    sdar_attacker = SDARAttacker(
+    attacker = Attacker(
         client_loader=client_ds,
         server_loader=server_ds,
         num_classes=dataset.num_class,
         device=f"cuda:{args.gpu}",
         dataset_name=args.dataset,
     )
-    sdar_attacker.preprocess(level=args.level, num_iters=num_iters, p_config=config)
+    attacker.preprocess(level=args.level, num_iters=num_iters, p_config=config)
     start_time = time.time()
-    history = sdar_attacker.train_pipeline()
+    history = attacker.train_pipeline()
     end_time = time.time()
     print(
         f"Training time: {end_time - start_time}. Periter time: {(end_time - start_time) / num_iters}"
     )
 
     # evaluate
-    sdar_attacker.evaluate(client_eval_ds)
+    attacker.evaluate(client_eval_ds)
 
     # try attack
     x, y = list(client_eval_ds)[0]
-    x_recon, mse = sdar_attacker.attack(x, y)
+    x_recon, mse = attacker.attack(x, y)
     t = 6
     plot_attack_results(
         x[t : t + 20],

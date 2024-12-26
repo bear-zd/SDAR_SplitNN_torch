@@ -1,39 +1,9 @@
-from model.attacker import SimulatorDiscriminator, DecoderDiscriminator, Decoder
+from model.sdar_attacker import SimulatorDiscriminator, DecoderDiscriminator, Decoder
 import torch
 import torch.nn.functional as F
 import numpy as np
 from itertools import chain
 
-
-def label_flip(num_class, flip_rate):
-    def wrapper(ys):
-        if flip_rate > 0.0:
-            ys_one_hot = F.one_hot(ys.view(-1), num_class).float()
-            uniform_dist = torch.ones_like(ys_one_hot) / num_class
-            noisy_dist = (1 - flip_rate) * ys_one_hot + flip_rate * uniform_dist
-            ys_noisy = torch.multinomial(noisy_dist, 1).squeeze()
-            return ys_noisy
-        return ys
-    return wrapper
-
-
-def dist_corr(X, Y):
-    X = X.view(X.size(0), -1)
-    Y = Y.view(Y.size(0), -1)
-    def pairwise_dist(Z):
-        Z_norm = (Z**2).sum(1).view(-1, 1)
-        dist = Z_norm - 2 * torch.mm(Z, Z.t()) + Z_norm.t()
-        return torch.sqrt(torch.clamp(dist, min=1e-10))
-    n = float(X.size(0))
-    a = pairwise_dist(X)
-    b = pairwise_dist(Y)
-    a_cent = a - a.mean(dim=1).view(-1, 1) - a.mean(dim=0).view(1, -1) + a.mean()
-    b_cent = b - b.mean(dim=1).view(-1, 1) - b.mean(dim=0).view(1, -1) + b.mean()
-    dCovXY = torch.sqrt(1e-10 + torch.sum(a_cent * b_cent) / (n ** 2))
-    dVarXX = torch.sqrt(1e-10 + torch.sum(a_cent * a_cent) / (n ** 2))
-    dVarYY = torch.sqrt(1e-10 + torch.sum(b_cent * b_cent) / (n ** 2))
-    dCorXY = dCovXY / torch.sqrt(1e-10 + dVarXX * dVarYY)
-    return dCorXY
 
 def get_intermidiate_shape(level, dataset_name="cifar10"):
     scale = 1 if dataset_name in ["cifar10", "cifar100"] else 2 if dataset_name == "tinyimagenet" else 3
@@ -44,7 +14,7 @@ def get_intermidiate_shape(level, dataset_name="cifar10"):
     else:
         return (64, 8*scale, 8*scale)
     
-class SDARAttacker:
+class FORAAttacker:
     def __init__(self, client_loader, server_loader, num_classes, device, model_name="resnet20", dataset_name="cifar10") -> None:
         self.client_loader = client_loader
         self.server_loader = server_loader
@@ -53,18 +23,14 @@ class SDARAttacker:
         self.device = torch.device(device)
         self.dataset_name = dataset_name
 
-    def preprocess(self, level, num_iters, p_config, conditional=True, use_e_dis=True, use_d_dis=True, verbose_freq=100):
+    def preprocess(self, level, num_iters, p_config,verbose_freq=100):
         # hyperparameters preparation
         self.level = level
         self.num_iters = num_iters
-        self.conditional = conditional
-        self.use_e_dis = use_e_dis
-        self.use_d_dis = use_d_dis
+
         self.verbose_freq = verbose_freq
         self.input_shape = (3, 32, 32) if self.dataset_name in ["cifar10", "cifar100"] else (3, 64, 64) if self.dataset_name == "tinyimagenet" else (3, 96, 96)
         self.p_config = p_config
-        self.alpha = p_config["alpha"]
-        self.flip_rate = p_config["flip_rate"]
         # model and optimizer preparation 
         
         if self.model_name == "resnet20":
@@ -72,29 +38,11 @@ class SDARAttacker:
         else:
             from model.plainnet import FModel, GModel
 
-        self.f = FModel(self.level, self.input_shape, width=p_config['width']).to(self.device)
-        self.g = GModel(self.level,  get_intermidiate_shape(self.level), self.num_classes, dropout=p_config["dropout"], width=p_config['width']).to(self.device)
-        self.fg_optimizer = torch.optim.Adam( chain(self.f.parameters(), self.g.parameters()), lr=p_config["fg_lr"], eps=1e-07)
+        self.bottom_model = FModel(self.level, self.input_shape, width=p_config['width']).to(self.device)
+        self.top_model = GModel(self.level,  get_intermidiate_shape(self.level), self.num_classes, dropout=p_config["dropout"], width=p_config['width']).to(self.device)
 
-        self.e = FModel(self.level, self.input_shape, width=p_config['width']).to(self.device)
-        self.e_optimizer = torch.optim.Adam(self.e.parameters() , lr=p_config["e_lr"], eps=1e-07)
+        
 
-        self.d = Decoder(self.level,  get_intermidiate_shape(self.level, self.dataset_name), conditional=conditional, num_classes=self.num_classes, width=p_config['width']).to(self.device)
-        self.d_optimizer = torch.optim.Adam(self.d.parameters(), lr=p_config["d_lr"], eps=1e-07)
-
-        if use_e_dis:
-            self.e_dis = SimulatorDiscriminator(self.level, get_intermidiate_shape(self.level, self.dataset_name), self.conditional, self.num_classes, self.dataset_name, width=p_config['width']).to(self.device)
-            self.e_dis_optimizer = torch.optim.Adam(self.e_dis.parameters(), lr=p_config["e_dis_lr"], eps=1e-07)
-        else:
-            self.e_dis = None
-        if use_d_dis:
-            self.d_dis = DecoderDiscriminator(self.input_shape, self.conditional, self.num_classes).to(self.device)
-            self.d_dis_optimizer = torch.optim.Adam(self.d_dis.parameters(), lr=p_config["d_dis_lr"], eps=1e-07)
-        else:
-            self.d_dis = None
-
-        # dataset preparation
-        self.flip_label = label_flip(self.num_classes, self.flip_rate)
         self.data_iterator = zip(self.client_loader, self.server_loader)
         # prepare log
         self.log = {}

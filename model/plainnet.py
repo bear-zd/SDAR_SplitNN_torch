@@ -1,5 +1,5 @@
 import torch.nn as nn
-
+from .base import ModelSplitor
     
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride):
@@ -19,12 +19,9 @@ class BasicBlock(nn.Module):
         out = self.relu2(out)
         return out
 
-
-
-
-class FModel(nn.Module):
+class BottomModel(nn.Module):
     def __init__(self, level, input_shape, width="standard"):
-        super(FModel, self).__init__()
+        super(BottomModel, self).__init__()
 
         if width not in ["narrow", "standard", "wide"]:
             raise ValueError(f'Width {width} is not supported.')
@@ -69,9 +66,9 @@ class FModel(nn.Module):
             x = layer(x)
         return x
 
-class GModel(nn.Module):
+class TopModel(nn.Module):
     def __init__(self, level, input_shape, num_classes=10, dropout=0.0, width="standard"):
-        super(GModel, self).__init__()
+        super(TopModel, self).__init__()
 
         if width not in ["narrow", "standard", "wide"]:
             raise ValueError(f'Width {width} is not supported.')
@@ -109,3 +106,23 @@ class GModel(nn.Module):
         x = self.fc(x)
         x = self.dropout(x)
         return x
+    
+class PlainnetModelSplitor(ModelSplitor):
+    def __init__(self, model_name, num_classes):
+        super().__init__("plainnet", num_classes)
+
+    def get_available_split(self):
+        return [3, 4, 5, 6, 7, 8, 9]
+    
+    def split_model(self, split_pos, **kwargs):
+        bottom_input_shape = kwargs.get("bottom_input_shape", None)
+        top_input_shape = kwargs.get("bottom_input_shape", None)
+        dropout = kwargs.get("dropout", 0.0)
+        width = kwargs.get("kwargs", "standard")
+        if bottom_input_shape is None or top_input_shape is None:
+            raise Exception("PlainnetModelSplitor build from two split model. `bottom/top _input_shape` arg shouldn't be None.")
+
+        bottom_model = BottomModel(split_pos, bottom_input_shape)
+        top_model = TopModel(level=split_pos, input_shape=top_input_shape, num_classes=self.num_classes, dropout=dropout, width=width)
+        return bottom_model, top_model
+        
